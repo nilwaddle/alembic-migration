@@ -293,6 +293,187 @@ def reload_models():
         raise HTTPException(status_code=500, detail=f"Error reloading models: {str(e)}")
 
 
+# Pydantic models
+# class ColumnDefinition(BaseModel):
+#     name: str
+#     type: str
+#     collation: Optional[str] = None
+#     nullable: bool = True
+#     default: Optional[Union[str, int, float, bool]] = None
+#     primary_key: bool = False
+
+#     @property
+#     def sqlalchemy_attributes(self) -> str:
+#         attributes: List[str] = []
+#         if self.collation:
+#             attributes.append(f"collation='{self.collation}'")
+#         if not self.nullable:
+#             attributes.append("nullable=False")
+#         if self.default is not None:
+#             default_value = self.default
+#             if isinstance(default_value, str):
+#                 default_value = f"'{default_value}'"
+#             attributes.append(f"default={default_value}")
+#         if self.primary_key:
+#             attributes.append("primary_key=True")
+
+#         return ", ".join(attributes)
+
+#     @property
+#     def sqlalchemy_column_declaration(self) -> str:
+#         attributes = self.sqlalchemy_attributes
+#         if attributes:
+#             return f"Column({self.type}, {attributes})"
+#         else:
+#             return f"Column({self.type})"
+
+#     @field_validator("name")
+#     def validate_name(cls, v: str) -> str:
+#         v = v.strip().replace(" ", "").lower()
+#         if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", v):
+#             raise ValueError(
+#                 "Column name must start with a letter or underscore, followed by letters, digits, or underscores."
+#             )
+#         return v
+
+#     @field_validator("type")
+#     def validate_type(cls, v: str) -> str:
+#         allowed_types = ["Integer", "String", "Float", "Boolean", "Date", "Text"]
+#         v = v.strip().split(",")[0].capitalize()  # Only take the type, capitalize it
+#         if v not in allowed_types:
+#             raise ValueError(
+#                 f"Invalid type '{v}'. Allowed types are: {', '.join(allowed_types)}"
+#             )
+#         return v
+
+
+# class CreateTableRequest(BaseModel):
+#     table_name: str
+#     columns: List[ColumnDefinition]
+
+#     @field_validator("table_name")
+#     def validate_table_name(cls, v: str) -> str:
+#         v = v.strip().replace(" ", "_").capitalize()
+#         if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", v):
+#             raise ValueError(
+#                 "Table name must start with a letter or underscore, followed by letters, digits, or underscores."
+#             )
+#         return v
+
+#     @field_validator("columns")
+#     def ensure_primary_key(cls, v: List[ColumnDefinition]) -> List[ColumnDefinition]:
+#         if not any(col.primary_key for col in v):
+#             raise ValueError("At least one column must be defined as the primary key.")
+#         return v
+
+
+# # Function to add the table to models.py
+# def add_table_to_models(
+#     file_path: str,
+#     table_name: str,
+#     columns: List[Dict[str, Union[str, int, float, bool, None]]],
+# ):
+#     with open(file_path, "r") as file:
+#         lines = file.readlines()
+
+#     # Check if the table already exists
+#     for line in lines:
+#         if f"class {table_name}" in line:
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=f"Table {table_name} already exists in models.py",
+#             )
+
+#     new_table_lines = [f"\n\nclass {table_name}(Base):\n"]
+#     new_table_lines.append(f"    __tablename__ = '{table_name.lower()}'\n")
+#     for column in columns:
+#         col_name = column["name"]
+#         col_type = column["type"]
+#         col_attributes: List[str] = []
+
+#         # Handle primary key
+#         if column.get("primary_key", False):
+#             col_attributes.append("primary_key=True")
+#         # Handle nullable
+#         if not column.get("nullable", True):
+#             col_attributes.append("nullable=False")
+#         # Handle default
+#         if column.get("default") is not None:
+#             default_value = column["default"]
+#             if isinstance(default_value, str):
+#                 default_value = f"'{default_value}'"
+#             col_attributes.append(f"default={default_value}")
+
+#         # Construct the column definition string
+#         attributes_str = ", ".join(col_attributes)
+#         if attributes_str:
+#             new_table_lines.append(
+#                 f"    {col_name} = Column({col_type}, {attributes_str})\n"
+#             )
+#         else:
+#             new_table_lines.append(f"    {col_name} = Column({col_type})\n")
+
+#         # Add collation as a comment if provided, for documentation purposes
+#         if column.get("collation"):
+#             new_table_lines.append(
+#                 f"    # Collation for {col_name}: {column['collation']}\n"
+#             )
+
+#     lines.extend(new_table_lines)
+
+#     with open(file_path, "w") as file:
+#         file.writelines(lines)
+#     reload_models()
+
+
+# @app.post("/add_table")
+# def create_table(request: CreateTableRequest):
+#     """
+#     Add a new table definition to the models.py file.
+
+#     This endpoint allows adding a new table definition to the `models.py` file,
+#     specifying the table name and its columns, ensuring at least one column is
+#     designated as the primary key.
+
+#     Args:
+#         request (CreateTableRequest): A request body containing the details of the table to be added.
+
+#     Returns:
+#         dict: JSON response indicating the result of adding the table to the models.py file.
+#               The response includes a detail message confirming the success or failure of the operation.
+#     """
+#     models_path = "/app/models.py"  # Adjust as per your actual path
+#     try:
+#         # Acquire a file lock
+#         with FileLock(models_path + ".lock"):  # Locking on models.py file
+#             add_table_to_models(
+#                 models_path,
+#                 request.table_name,
+#                 [
+#                     {
+#                         "name": col.name,
+#                         "type": col.type,
+#                         "primary_key": col.primary_key,
+#                         "nullable": col.nullable,
+#                         "default": col.default,
+#                         "collation": col.collation,
+#                     }
+#                     for col in request.columns
+#                 ],
+#             )
+
+#         generate_migration(message=f"Add table {request.table_name}")
+#         run_migrations("upgrade")
+#         reload_models()
+#         tables = parse_models_file(models_path)
+#         return {
+#             "detail": f"Table '{request.table_name}' added to models.py.",
+#             "tables": tables,
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/add_table")
 def create_table(request: CreateTableRequest):
     """
@@ -330,7 +511,12 @@ def create_table(request: CreateTableRequest):
         run_migrations("upgrade")
         generate_migration(message=f"Add table {request.table_name}")
         run_migrations("upgrade")
-        return {"detail": f"Table '{request.table_name}' added to models.py."}
+        reload_models()
+        tables = parse_models_file(models_path)
+        return {
+            "detail": f"Table '{request.table_name}' added to models.py.",
+            "tables": tables,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -361,6 +547,157 @@ def add_table_to_models(file_path: str, table_name: str, columns: List[Dict[str,
     with open(file_path, "w") as file:
         file.writelines(lines)
     reload_models()
+
+
+# def edit_table_in_models(
+#     file_path: str,
+#     table_name: str,
+#     add_columns: List[Dict[str, str]],
+#     edit_columns: List[Dict[str, str]],
+#     delete_columns: List[str],
+# ) -> None:
+#     # Check if the file exists and is writable
+#     lock = FileLock(f"{file_path}.lock")
+#     with lock:
+
+#         if not os.path.exists(file_path):
+#             raise HTTPException(
+#                 status_code=404, detail=f"File {file_path} does not exist."
+#             )
+#         if not os.access(file_path, os.W_OK):
+#             raise HTTPException(
+#                 status_code=403, detail=f"File {file_path} is not writable."
+#             )
+
+#         with open(file_path, "r") as file:
+#             lines = file.readlines()
+
+#         model_start = None
+#         model_end = None
+
+#         # Find the start and end of the model class definition
+#         for i, line in enumerate(lines):
+#             if f"class {table_name}" in line:
+#                 model_start = i
+#                 print(f"Found start of class {table_name} at line {model_start}")
+#             if model_start is not None and line.strip() == "":
+#                 model_end = i
+#                 break
+
+#         if model_start is None:
+#             raise HTTPException(
+#                 status_code=404, detail=f"Table {table_name} not found in models.py"
+#             )
+
+#         # If no empty line is found, set model_end to the length of lines (i.e., the end of the file)
+#         if model_end is None:
+#             model_end = len(lines)
+#         print(f"Model class ends at line {model_end}")
+
+#         # Remove existing columns that are to be deleted
+#         # if delete_columns:
+#         #     for i in range(model_start, model_end):
+#         #         line = lines[i].strip()
+#         #         for col in delete_columns:
+#         #             if line.startswith(f"{col} = Column("):
+#         #                 lines[i] = f"# Deleted column: {line}\n"
+#         #                 print(f"Deleted column: {col}")
+#         # Remove existing columns that are to be deleted
+#         if delete_columns:
+#             # Use a list comprehension to filter out lines that should be deleted
+#             lines = [
+#                 line
+#                 for i, line in enumerate(lines)
+#                 if not any(
+#                     line.strip().startswith(f"{col} = Column(")
+#                     for col in delete_columns
+#                 )
+#                 or i < model_start
+#                 or i >= model_end
+#             ]
+#             print(f"Deleted columns: {delete_columns}")
+#         # Add new columns
+#         if add_columns:
+#             insert_position = model_end - 1
+#             for col in add_columns:
+#                 new_column_line = f"    {col['name']} = Column({col['type']}"
+#                 if col["attributes"]:
+#                     new_column_line += f", {col['attributes']}"
+#                 new_column_line += ")\n"
+#                 lines.insert(insert_position, new_column_line)
+#                 insert_position += 1
+#                 print(f"Added new column: {new_column_line.strip()}")
+
+#         # Edit existing columns
+#         for col in edit_columns:
+#             if "name" not in col:
+#                 raise HTTPException(
+#                     status_code=400,
+#                     detail=f"Missing required fields in edit_columns: {col}",
+#                 )
+
+#             found = False
+#             for i in range(model_start, model_end):
+#                 line = lines[i].strip()
+#                 if line.startswith(f"{col['name']} = Column("):
+#                     # Extract existing type and attributes
+#                     current_attributes = line.split("(", 1)[1].rsplit(")", 1)[0]
+#                     existing_type_and_attrs = current_attributes.split(",", 1)
+
+#                     existing_type = existing_type_and_attrs[0].strip()
+#                     if len(existing_type_and_attrs) == 2:
+#                         existing_attrs = existing_type_and_attrs[1]
+#                     else:
+#                         existing_attrs = ""
+
+#                     existing_attrs_list = [
+#                         attr.strip()
+#                         for attr in existing_attrs.split(",")
+#                         if attr.strip()
+#                     ]
+#                     new_attrs_list = [
+#                         attr.strip()
+#                         for attr in (col.get("new_attributes") or "").split(",")
+#                         if attr.strip()
+#                     ]
+
+#                     # Combine existing and new attributes
+#                     combined_attrs_set = set(existing_attrs_list).union(new_attrs_list)
+#                     combined_attrs = ", ".join(combined_attrs_set)
+
+#                     # Use existing type if new_type is not provided
+#                     final_type = col.get("new_type", existing_type)
+
+#                     # Construct the new column line
+#                     new_column_line = f"    {col['new_name'] if 'new_name' in col and col['new_name'] else col['name']} = Column({final_type}"
+#                     if combined_attrs:
+#                         new_column_line += f", {combined_attrs}"
+#                     new_column_line += ")\n"
+
+#                     lines[i] = new_column_line
+#                     found = True
+#                     print(f"Edited column: {new_column_line.strip()}")
+#                     break
+
+#             if not found:
+#                 raise HTTPException(
+#                     status_code=404,
+#                     detail=f"Column {col['name']} not found in table {table_name}",
+#                 )
+
+#     # Print the final lines before writing to verify changes
+#     print("Final lines to write:")
+#     for line in lines:
+#         print(line.strip())
+
+#     temp_file_path = f"{file_path}.tmp"
+#     with open(temp_file_path, "w") as temp_file:
+#         temp_file.writelines(lines)
+#     os.replace(temp_file_path, file_path)
+#     # with open(file_path, "w") as file:
+#     #     file.writelines(lines)
+#     print(f"Successfully wrote changes to {file_path}")
+#     reload_models()
 
 
 def edit_table_in_models(
@@ -408,14 +745,20 @@ def edit_table_in_models(
             model_end = len(lines)
         print(f"Model class ends at line {model_end}")
 
-        # Remove existing columns that are to be deleted
-        # if delete_columns:
-        #     for i in range(model_start, model_end):
-        #         line = lines[i].strip()
-        #         for col in delete_columns:
-        #             if line.startswith(f"{col} = Column("):
-        #                 lines[i] = f"# Deleted column: {line}\n"
-        #                 print(f"Deleted column: {col}")
+        # Verify that no primary key column is in delete_columns
+        primary_keys: List[str] = []
+        for i in range(model_start, model_end):
+            line = lines[i].strip()
+            for col in delete_columns:
+                if line.startswith(f"{col} = Column(") and "primary_key=True" in line:
+                    primary_keys.append(col)
+
+        if primary_keys:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete primary key column(s): {', '.join(primary_keys)}",
+            )
+
         # Remove existing columns that are to be deleted
         if delete_columns:
             # Use a list comprehension to filter out lines that should be deleted
@@ -430,6 +773,7 @@ def edit_table_in_models(
                 or i >= model_end
             ]
             print(f"Deleted columns: {delete_columns}")
+
         # Add new columns
         if add_columns:
             insert_position = model_end - 1
@@ -508,8 +852,6 @@ def edit_table_in_models(
     with open(temp_file_path, "w") as temp_file:
         temp_file.writelines(lines)
     os.replace(temp_file_path, file_path)
-    # with open(file_path, "w") as file:
-    #     file.writelines(lines)
     print(f"Successfully wrote changes to {file_path}")
     reload_models()
 
@@ -562,14 +904,79 @@ def edit_table(request: EditTableRequest):
         edit_table_in_models(
             models_path, request.table_name, add_columns, edit_columns, delete_columns
         )
-        run_migrations("upgrade")
         generate_migration(message=f"Edited table {request.table_name}")
         run_migrations("upgrade")
+        reload_models()
+        tables = parse_models_file(models_path)
         return {
-            "detail": f"Table '{request.table_name}' edited successfully in models.py."
+            "detail": f"Table '{request.table_name}' edited successfully in models.py.",
+            "tables": tables,
         }
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# @app.post("/migrate/edit_table")
+# def edit_table(request: EditTableRequest):
+#     try:
+#         models_path = "/app/models.py"
+
+#         # Prepare the edit_columns list
+#         if request.edit_columns is not None:
+#             edit_columns = [
+#                 {
+#                     "name": col.name,
+#                     "new_name": col.new_name,
+#                     "new_type": col.new_type,
+#                     "new_attributes": col.new_attributes,
+#                 }
+#                 for col in request.edit_columns
+#                 if col.name  # Allow edits even if new_type or new_attributes are None
+#             ]
+#             # Filter out None values from the dictionaries
+#             edit_columns = [
+#                 {k: v for k, v in col.items() if v is not None} for col in edit_columns
+#             ]
+#         else:
+#             edit_columns = []
+
+#         # Prepare the add_columns list
+#         if request.add_columns is not None:
+#             add_columns = [
+#                 {
+#                     "name": col.name,
+#                     "type": col.type,
+#                     "attributes": col.attributes if col.attributes else "",
+#                 }
+#                 for col in request.add_columns
+#                 if col.name and col.type
+#             ]
+#         else:
+#             add_columns = []
+
+#         # Prepare the delete_columns list
+#         if request.delete_columns is not None:
+#             delete_columns = [col for col in request.delete_columns if col]
+#         else:
+#             delete_columns = []
+
+#         # Call edit_table_in_models with the filtered lists
+#         edit_table_in_models(
+#             models_path, request.table_name, add_columns, edit_columns, delete_columns
+#         )
+#         run_migrations("upgrade")
+#         generate_migration(message=f"Edited table {request.table_name}")
+#         run_migrations("upgrade")
+#         reload_models()
+#         tables = parse_models_file(models_path)
+#         return {
+#             "detail": f"Table '{request.table_name}' edited successfully in models.py.",
+#             "tables": tables,
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/migrate/upgrade/{revision}")
@@ -704,33 +1111,37 @@ def rename_table(request: RenameTableRequest):
         return {
             "detail": f"Table '{request.old_name}' renamed to '{request.new_name}' in models.py."
         }
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 def rename_table_in_models(file_path: str, old_name: str, new_name: str):
-    with open(file_path, "r") as file:
-        lines = file.readlines()
+    lock = FileLock(f"{file_path}.lock")
+    with lock:
+        with open(file_path, "r") as file:
+            lines = file.readlines()
 
-    class_pattern = re.compile(rf"class\s+{old_name}\s*\(.*\):")
-    tablename_pattern = re.compile(rf"__tablename__\s*=\s*'{old_name.lower()}'")
+        class_pattern = re.compile(rf"class\s+{old_name}\s*\(.*\):")
+        tablename_pattern = re.compile(rf"__tablename__\s*=\s*'{old_name.lower()}'")
 
-    class_renamed = False
-    tablename_renamed = False
+        class_renamed = False
+        tablename_renamed = False
 
-    for i, line in enumerate(lines):
-        if class_pattern.match(line):
-            lines[i] = line.replace(old_name, new_name)
-            class_renamed = True
-        if tablename_pattern.search(line):
-            lines[i] = line.replace(old_name.lower(), new_name.lower())
-            tablename_renamed = True
+        for i, line in enumerate(lines):
+            if class_pattern.match(line):
+                lines[i] = line.replace(old_name, new_name)
+                class_renamed = True
+            if tablename_pattern.search(line):
+                lines[i] = line.replace(old_name.lower(), new_name.lower())
+                tablename_renamed = True
 
-    if not (class_renamed and tablename_renamed):
-        raise ValueError(f"Table '{old_name}' not found in models.py")
+        if not (class_renamed and tablename_renamed):
+            raise ValueError(f"Table '{old_name}' not found in models.py")
 
-    with open(file_path, "w") as file:
-        file.writelines(lines)
+        with open(file_path, "w") as file:
+            file.writelines(lines)
 
 
 @app.get(
