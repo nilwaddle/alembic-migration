@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 2020
+      POSTGRES_DB: migration_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+    environment:
+       DATABASE_URL: "postgresql://postgres:2020@db:5432/migration_db"
+    volumes:
+      - ../migration/:/app
+
+
+
+volumes:
+  postgres_data:
